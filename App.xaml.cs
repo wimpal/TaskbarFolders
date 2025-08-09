@@ -1,39 +1,44 @@
-using System;
+
 using System.Windows;
-using TaskbarGrouper.Views;
+using System.Threading;
 
 namespace TaskbarGrouper
 {
-    public partial class App : System.Windows.Application
+    public partial class App : Application
     {
+        private static Mutex? mutex = null;
+        private static Views.MainWindow? singleMainWindow = null;
+
         protected override void OnStartup(StartupEventArgs e)
         {
-            base.OnStartup(e);
-
-            // Prevent multiple instances
-            var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
-            var runningProcesses = System.Diagnostics.Process.GetProcessesByName(currentProcess.ProcessName);
+            // Ensure only one instance can run
+            const string appName = "TaskbarGrouperSingleInstance";
+            bool createdNew;
             
-            if (runningProcesses.Length > 1)
+            mutex = new Mutex(true, appName, out createdNew);
+            
+            if (!createdNew)
             {
-                MessageBox.Show("Taskbar Grouper is already running.", "Already Running", 
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                Shutdown();
+                // Another instance is already running
+                Current.Shutdown();
                 return;
             }
+            
+            base.OnStartup(e);
+            
+            // Ensure only one MainWindow is created
+            if (singleMainWindow == null)
+            {
+                singleMainWindow = new Views.MainWindow();
+                singleMainWindow.Closed += (s, args) => singleMainWindow = null;
+                singleMainWindow.Show();
+            }
+        }
 
-            try
-            {
-                // Create the main window - it will start minimized
-                MainWindow = new MainWindow();
-                MainWindow.Show(); // This will show it in the taskbar even when minimized
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to start Taskbar Grouper: {ex.Message}", 
-                    "Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                Shutdown();
-            }
+        protected override void OnExit(ExitEventArgs e)
+        {
+            mutex?.ReleaseMutex();
+            base.OnExit(e);
         }
     }
 }

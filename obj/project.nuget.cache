@@ -1,13 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "GvKh75v8vgY=",
+  "dgSpecHash": "TONPkgkXXpw=",
   "success": true,
-  "projectFilePath": "D:\\Dev\\csharp\\TaskbarGrouper.csproj",
-  "expectedPackageFiles": [
-    "C:\\Users\\wimpa\\.nuget\\packages\\microsoft.win32.systemevents\\7.0.0\\microsoft.win32.systemevents.7.0.0.nupkg.sha512",
-    "C:\\Users\\wimpa\\.nuget\\packages\\system.codedom\\7.0.0\\system.codedom.7.0.0.nupkg.sha512",
-    "C:\\Users\\wimpa\\.nuget\\packages\\system.drawing.common\\7.0.0\\system.drawing.common.7.0.0.nupkg.sha512",
-    "C:\\Users\\wimpa\\.nuget\\packages\\system.management\\7.0.2\\system.management.7.0.2.nupkg.sha512"
-  ],
+  "projectFilePath": "D:\\Dev\\csharp\\TaskbarFolders\\TaskbarGrouper.csproj",
+  "expectedPackageFiles": [],
   "logs": []
 }

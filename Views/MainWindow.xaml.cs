@@ -1,225 +1,104 @@
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Threading;
-using TaskbarGrouper.Models;
-using TaskbarGrouper.Services;
+using System.Runtime.InteropServices;
 
 namespace TaskbarGrouper.Views
 {
     public partial class MainWindow : Window
     {
-        private readonly WindowManager _windowManager;
-        private readonly GroupManager _groupManager;
-        private GroupPopup? _groupPopup;
-        private bool _suppressNextPopup = false;
-        private DispatcherTimer? _suppressionTimer;
+        private static GroupPopup? globalPopup;
+        private static bool isCreatingPopup = false;
+        private DateTime lastActivation = DateTime.MinValue;
 
         public MainWindow()
         {
             InitializeComponent();
-            _windowManager = new WindowManager();
-            _groupManager = new GroupManager();
+            this.WindowState = WindowState.Minimized;
+            this.ShowInTaskbar = true;
+            this.Activated += MainWindow_Activated;
+        }
+
+        private void MainWindow_Activated(object? sender, System.EventArgs e)
+        {
+            this.WindowState = WindowState.Minimized;
             
-            // Start minimized so it appears only in taskbar
-            WindowState = WindowState.Minimized;
-        }
-
-        private void Window_StateChanged(object sender, EventArgs e)
-        {
-            // When clicked from taskbar, show popup instead of the main window
-            if (WindowState == WindowState.Normal)
+            // Prevent rapid successive activations (debounce)
+            var now = DateTime.Now;
+            if ((now - lastActivation).TotalMilliseconds < 500)
+                return;
+            lastActivation = now;
+            
+            // Toggle behavior: if popup is open, close it
+            if (globalPopup != null && globalPopup.IsVisible && !isCreatingPopup)
             {
-                if (_suppressNextPopup)
-                {
-                    _suppressNextPopup = false;
-                    WindowState = WindowState.Minimized;
-                    return;
-                }
-                // Immediately minimize back and show popup
-                WindowState = WindowState.Minimized;
-                ShowFixedPopup();
+                globalPopup.Close();
+                return;
             }
+            
+            // Prevent multiple popups
+            if (isCreatingPopup) 
+                return;
+            
+            isCreatingPopup = true;
+            
+            // Close any existing popup
+            globalPopup?.Close();
+            
+            // Create and position new popup
+            globalPopup = new GroupPopup();
+            globalPopup.Owner = this;
+            globalPopup.ShowInTaskbar = false;
+            globalPopup.Closed += (s, e) => { globalPopup = null; isCreatingPopup = false; };
+            
+            // Position popup above cursor
+            var cursorPos = GetCursorPosition();
+            PositionPopup(cursorPos);
+            
+            globalPopup.Activate();
+            isCreatingPopup = false;
         }
 
-        private void Window_Closing(object sender, CancelEventArgs e)
+        private void PositionPopup(POINT cursorPos)
         {
-            // Instead of closing, just minimize to taskbar
-            e.Cancel = true;
-            WindowState = WindowState.Minimized;
-            _groupPopup?.Hide();
-        }
-
-        private void ShowFixedPopup()
-        {
-            try
-            {
-                if (_groupPopup != null && _groupPopup.IsVisible)
-                {
-                    // Hide the popup and suppress next popup for 500ms
-                    _groupPopup.Hide();
-                    _suppressNextPopup = true;
-                    
-                    // Use a timer to clear the suppression flag
-                    _suppressionTimer?.Stop();
-                    _suppressionTimer = new DispatcherTimer
-                    {
-                        Interval = TimeSpan.FromMilliseconds(500)
-                    };
-                    _suppressionTimer.Tick += (s, e) =>
-                    {
-                        _suppressNextPopup = false;
-                        _suppressionTimer.Stop();
-                    };
-                    _suppressionTimer.Start();
-                    return;
-                }
-
-                if (_groupPopup == null)
-                {
-                    _groupPopup = new GroupPopup();
-                }
-
-                // Use cursor position as the most accurate method
-                var cursorPos = System.Windows.Forms.Cursor.Position;
-                var popupWidth = 350;
-                var popupHeight = 450;
-                var popupX = (double)cursorPos.X - (popupWidth / 2.0);
-                var popupY = (double)cursorPos.Y - popupHeight - 20;
-
-                var screenWidth = SystemParameters.PrimaryScreenWidth;
-                var screenHeight = SystemParameters.PrimaryScreenHeight;
-                if (popupX < 10)
-                    popupX = 10;
-                else if (popupX + popupWidth > screenWidth - 10)
-                    popupX = screenWidth - popupWidth - 10;
-                if (popupY < 10)
-                    popupY = 10;
-
-                _groupPopup.ShowAtPosition(new Point(popupX, popupY));
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show($"Error showing popup: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-
-        private Point GetDefaultTaskbarPosition()
-        {
-            // Simple fallback to bottom-center of screen
+            globalPopup!.WindowStartupLocation = WindowStartupLocation.Manual;
+            globalPopup.Left = -2000; // Off screen temporarily
+            globalPopup.Top = -2000;
+            globalPopup.Show();
+            globalPopup.UpdateLayout();
+            
+            // Get popup size
+            double width = globalPopup.ActualWidth > 0 ? globalPopup.ActualWidth : 350;
+            double height = globalPopup.ActualHeight > 0 ? globalPopup.ActualHeight : 200;
+            
+            // Position above cursor
+            double left = cursorPos.X - (width / 2);
+            double top = cursorPos.Y - height - 10;
+            
+            // Keep on screen
             var screenWidth = SystemParameters.PrimaryScreenWidth;
             var screenHeight = SystemParameters.PrimaryScreenHeight;
-            return new Point(screenWidth / 2, screenHeight - 40);
+            left = Math.Max(0, Math.Min(left, screenWidth - width));
+            top = Math.Max(0, top);
+            
+            globalPopup.Left = left;
+            globalPopup.Top = top;
         }
 
-        private void LoadGroups()
+        private POINT GetCursorPosition()
         {
-            try
-            {
-                var windows = _windowManager.GetVisibleWindows();
-                var groupedWindows = _groupManager.GetWindowsByGroup(windows);
-
-                var groupViewModels = groupedWindows.Select(kvp => new GroupViewModel
-                {
-                    GroupName = kvp.Key.Name,
-                    GroupColorBrush = new SolidColorBrush(kvp.Key.Color),
-                    Windows = kvp.Value,
-                    WindowCount = kvp.Value.Count.ToString()
-                }).ToList();
-
-                GroupsItemsControl.ItemsSource = groupViewModels;
-                
-                // Update window title with count
-                var totalApps = groupViewModels.Sum(g => g.Windows.Count);
-                Title = $"App Groups ({totalApps} apps)";
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show($"Error loading groups: {ex.Message}", "Error", 
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+            GetCursorPos(out POINT point);
+            return point;
         }
-
-        private void WindowButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is System.Windows.Controls.Button button && button.Tag is WindowInfo windowInfo)
-            {
-                try
-                {
-                    _windowManager.BringWindowToFront(windowInfo.Handle);
-                    // Hide popup after switching to the window
-                    _groupPopup?.Hide();
-                }
-                catch (Exception ex)
-                {
-                    System.Windows.MessageBox.Show($"Error switching to window: {ex.Message}", "Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            }
-        }
-
-        private void RefreshButton_Click(object sender, RoutedEventArgs e)
-        {
-            LoadGroups();
-        }
-
-        private void MinimizeButton_Click(object sender, RoutedEventArgs e)
-        {
-            _groupPopup?.Hide();
-        }
-
-        private void ShowGroupsMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            ShowFixedPopup();
-        }
-
-        private void RefreshMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            LoadGroups();
-        }
-
-        private void SettingsMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            System.Windows.MessageBox.Show("Settings functionality will be implemented in a future version.",
-                "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-
-        private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
-        {
-            // Actually close the application
-            _groupPopup?.Close();
-            System.Windows.Application.Current.Shutdown();
-        }
-
-        #region Windows API for taskbar positioning
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
         [DllImport("user32.dll")]
-        private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        private static extern bool GetCursorPos(out POINT lpPoint);
 
         [StructLayout(LayoutKind.Sequential)]
-        private struct RECT
+        private struct POINT
         {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
+            public int X;
+            public int Y;
         }
-        #endregion
-    }
-
-    public class GroupViewModel
-    {
-        public string GroupName { get; set; } = string.Empty;
-        public SolidColorBrush GroupColorBrush { get; set; } = new SolidColorBrush(Colors.Gray);
-        public List<WindowInfo> Windows { get; set; } = new();
-        public string WindowCount { get; set; } = "0";
     }
 }
