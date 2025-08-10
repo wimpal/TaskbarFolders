@@ -14,6 +14,7 @@ D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.GeneratedMS
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.AssemblyInfoInputs.cache
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.AssemblyInfo.cs
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.csproj.CoreCompileInputs.cache
+D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.sourcelink.json
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.dll
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\refint\TaskbarGrouper.dll
 D:\Dev\csharp\TaskbarFolders\obj\Debug\net9.0-windows\TaskbarGrouper.pdb

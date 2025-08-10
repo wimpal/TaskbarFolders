@@ -35,8 +35,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
-                                <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+                                <Setter Property="Background" Value="#FFE0E0E0"/>
+                                <!-- Keep text color unchanged on hover -->
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ActiveCaptionBrushKey}}"/>
@@ -71,12 +71,121 @@
                            Foreground="{DynamicResource {x:Static SystemColors.ActiveCaptionTextBrushKey}}"/>
             </Border>
             
-            <!-- Window List -->
+                <!-- Header with Close Button -->
+                <Border Grid.Row="0"
+                        Background="{DynamicResource {x:Static SystemColors.ActiveCaptionBrushKey}}"
+                        CornerRadius="4,4,0,0"
+                        Margin="-8,-8,-8,8"
+                        Padding="0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Open Windows"
+                                   FontWeight="SemiBold"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource {x:Static SystemColors.ActiveCaptionTextBrushKey}}"
+                                   VerticalAlignment="Center"
+                                   Margin="12,8,0,8"/>
+                        <Button x:Name="AddFileButton"
+                                Grid.Column="1"
+                                Width="24" Height="24"
+                                Margin="0,6,6,0"
+                                Padding="0"
+                                Background="#FFF0F0F0"
+                                BorderBrush="#FFD0D0D0"
+                                BorderThickness="1"
+                                Foreground="#FF888888"
+                                FontWeight="Bold"
+                                FontSize="16"
+                                Content="+"
+                                ToolTip="Add File"
+                                Cursor="Hand"
+                                Click="AddFileButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{x:Null}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="12">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#FFE0E0E0"/>
+                                                        <Setter Property="Foreground" Value="#FF222222"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" Value="#FFD0D0D0"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button x:Name="CloseButton"
+                                Grid.Column="2"
+                                Width="24" Height="24"
+                                Margin="0,6,6,6"
+                                Padding="0"
+                                Background="#FFF0F0F0"
+                                BorderBrush="#FFD0D0D0"
+                                BorderThickness="1"
+                                Foreground="#FF888888"
+                                FontWeight="Bold"
+                                FontSize="14"
+                                Content="✕"
+                                ToolTip="Close"
+                                Cursor="Hand"
+                                Click="CloseButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{x:Null}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="12">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#FFE0E0E0"/>
+                                                        <Setter Property="Foreground" Value="#FF222222"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" Value="#FFD0D0D0"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+                </Border>
+            
+            <!-- Window List and File List -->
             <ScrollViewer Grid.Row="1" 
                           VerticalScrollBarVisibility="Auto" 
                           HorizontalScrollBarVisibility="Disabled"
                           MaxHeight="300">
-                <StackPanel x:Name="AppListPanel" Orientation="Vertical"/>
+                <StackPanel Orientation="Vertical">
+                    <StackPanel x:Name="FileListPanel" Orientation="Vertical" AllowDrop="True" Drop="FileListPanel_Drop" DragOver="FileListPanel_DragOver"/>
+                    <Separator Margin="0,8,0,8"/>
+                    <Expander Header="Open Windows" IsExpanded="False" Margin="0,0,0,0">
+                        <StackPanel x:Name="AppListPanel" Orientation="Vertical"/>
+                    </Expander>
+                </StackPanel>
             </ScrollViewer>
         </Grid>
     </Border>
