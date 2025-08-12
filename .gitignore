@@ -1,1 +1,20 @@
-.vscode/tasks.json
+.vscode/
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.DS_Store
+*.swp
+Thumbs.db
+TestResults/
+*.log
+# Local app data for TaskbarGrouper
+/AppData/Local/TaskbarGrouper/categories.json
+# Or just ignore all TaskbarGrouper app data
+categories.json
+# Rider/JetBrains
+.idea/
+# Windows
+ehthumbs.db
+Desktop.ini

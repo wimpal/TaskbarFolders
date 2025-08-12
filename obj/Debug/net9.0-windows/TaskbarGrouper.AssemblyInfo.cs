@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TaskbarGrouper")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2f78e43fa76319c15c7a91e98eb5cac3d8c2a7ff")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6e0e6f94aa9ecbdf430718e2581e26b145cfdc94")]
 [assembly: System.Reflection.AssemblyProductAttribute("TaskbarGrouper")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TaskbarGrouper")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

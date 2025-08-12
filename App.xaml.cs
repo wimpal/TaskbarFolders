@@ -14,18 +14,18 @@ namespace TaskbarGrouper
             // Ensure only one instance can run
             const string appName = "TaskbarGrouperSingleInstance";
             bool createdNew;
-            
+
             mutex = new Mutex(true, appName, out createdNew);
-            
+
             if (!createdNew)
             {
                 // Another instance is already running
                 Current.Shutdown();
                 return;
             }
-            
+
             base.OnStartup(e);
-            
+
             // Ensure only one MainWindow is created
             if (singleMainWindow == null)
             {

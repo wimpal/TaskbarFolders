@@ -1,22 +1,56 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Interop;
 using Microsoft.Win32;
+using System.Text.Json;
+using System.Linq;
 
 
 namespace TaskbarGrouper.Views
 {
     public partial class GroupPopup : Window
     {
+        private static string GetDataFilePath()
+        {
+            string folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TaskbarGrouper");
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+            return System.IO.Path.Combine(folder, "categories.json");
+        }
 
-        private readonly List<string> addedFiles = new();
+        private void SaveCategories()
+        {
+            try
+            {
+                var data = categories.Select(c => new Models.AppGroup { Name = c.Name, Items = new List<string>(c.Items) }).ToList();
+                var json = JsonSerializer.Serialize(data);
+                File.WriteAllText(GetDataFilePath(), json);
+            }
+            catch { /* Ignore errors for now */ }
+        }
+
+        private void LoadCategories()
+        {
+            try
+            {
+                string path = GetDataFilePath();
+                if (File.Exists(path))
+                {
+                    var json = File.ReadAllText(path);
+                    var data = JsonSerializer.Deserialize<List<Models.AppGroup>>(json);
+                    if (data != null)
+                    {
+                        categories.Clear();
+                        categories.AddRange(data);
+                    }
+                }
+            }
+            catch { /* Ignore errors for now */ }
+        }
+
+    private readonly List<Models.AppGroup> categories = new();
 
 
         private double? initialLeft = null;
@@ -25,9 +59,15 @@ namespace TaskbarGrouper.Views
         public GroupPopup()
         {
             InitializeComponent();
+            ApplyTheme();
+            LoadCategories();
             LoadRunningApps();
-            LoadFileList();
-            FileListPanel.AllowDrop = true;
+            // Initialize with one default category if none loaded
+            if (categories.Count == 0)
+            {
+                categories.Add(new Models.AppGroup { Name = "Default" });
+            }
+            RenderCategories();
             this.ContentRendered += (s, e) =>
             {
                 // Store the initial Left and the screen where the popup is shown, only once, after layout is complete
@@ -43,6 +83,58 @@ namespace TaskbarGrouper.Views
                 PositionAboveTaskbar();
             };
         }
+
+        private void ApplyTheme()
+        {
+            var isDark = TaskbarGrouper.Services.ThemeHelper.IsDarkTheme();
+            var accent = TaskbarGrouper.Services.ThemeHelper.GetAccentColor();
+
+            // Try to enable Mica effect (Windows 11+)
+            bool micaApplied = false;
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero && IsWindows11OrGreater())
+                {
+                    const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+                    int micaValue = 2; // DWMSBT_MAINWINDOW
+                    IntPtr ptrMicaValue = System.Runtime.InteropServices.Marshal.AllocHGlobal(sizeof(int));
+                    System.Runtime.InteropServices.Marshal.WriteInt32(ptrMicaValue, micaValue);
+                    DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ptrMicaValue, sizeof(int));
+                    System.Runtime.InteropServices.Marshal.FreeHGlobal(ptrMicaValue);
+                    micaApplied = true;
+                }
+            }
+            catch { /* Ignore if not supported */ }
+
+            // Fallback: use system Mica color if available, else dark/light
+                System.Windows.Media.Color micaColor = isDark ? System.Windows.Media.Color.FromRgb(32, 32, 32) : System.Windows.Media.Colors.White;
+            if (!micaApplied)
+            {
+                // Try to get the system's Mica fallback color (Windows 11)
+                try
+                {
+                    var micaBrush = System.Windows.Application.Current.TryFindResource("SolidBackgroundFillColorBase") as System.Windows.Media.SolidColorBrush;
+                    if (micaBrush != null)
+                        micaColor = micaBrush.Color;
+                }
+                catch { }
+            }
+
+            this.Background = new System.Windows.Media.SolidColorBrush(micaColor);
+            this.Foreground = new System.Windows.Media.SolidColorBrush(isDark ? System.Windows.Media.Colors.White : System.Windows.Media.Colors.Black);
+            this.Resources["AccentColor"] = new System.Windows.Media.SolidColorBrush(accent);
+        }
+
+        // Helper: check if running on Windows 11+
+        private static bool IsWindows11OrGreater()
+        {
+            var os = Environment.OSVersion.Version;
+            return (os.Major >= 10 && os.Build >= 22000) || (os.Major > 10);
+        }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, IntPtr attrValue, int attrSize);
 
         private void PositionAboveTaskbar()
         {
@@ -76,113 +168,200 @@ namespace TaskbarGrouper.Views
 
         private void AddFileButton_Click(object sender, RoutedEventArgs e)
         {
-            var dlg = new OpenFileDialog
+            // Find which category this button belongs to
+            if (sender is Button btn && btn.Tag is Models.AppGroup group)
             {
-                Multiselect = true,
-                Title = "Add files to open"
-            };
-            if (dlg.ShowDialog() == true)
-            {
-                foreach (var file in dlg.FileNames)
+                var dlg = new OpenFileDialog
                 {
-                    if (!addedFiles.Contains(file))
-                        addedFiles.Add(file);
-                }
-                LoadFileList();
-            }
-        }
-
-        private void FileListPanel_DragOver(object sender, DragEventArgs e)
-        {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                e.Effects = DragDropEffects.Copy;
-            else
-                e.Effects = DragDropEffects.None;
-            e.Handled = true;
-        }
-
-        private void FileListPanel_Drop(object sender, DragEventArgs e)
-        {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            {
-                var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                foreach (var file in files)
-                {
-                    if (File.Exists(file) && !addedFiles.Contains(file))
-                        addedFiles.Add(file);
-                }
-                LoadFileList();
-            }
-        }
-
-        private void LoadFileList()
-        {
-            FileListPanel.Children.Clear();
-            foreach (var file in addedFiles)
-            {
-                var button = new Button
-                {
-                    Style = (Style)this.FindResource("ModernButton"),
-                    Height = 50,
-                    Tag = file
+                    Multiselect = true,
+                    Title = $"Add files to {group.Name}"
                 };
-                var grid = new Grid();
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                // File icon
-                var iconImage = new System.Windows.Controls.Image
+                if (dlg.ShowDialog() == true)
                 {
-                    Width = 32,
-                    Height = 32,
-                    Margin = new Thickness(0, 0, 8, 0),
+                    foreach (var file in dlg.FileNames)
+                    {
+                        if (!group.Items.Contains(file))
+                            group.Items.Add(file);
+                    }
+                    SaveCategories();
+                    RenderCategories();
+                }
+            }
+        }
+
+        private void AddCategoryButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Always add new category at the end, default name is 'Category'
+            categories.Add(new Models.AppGroup { Name = "Category" });
+            SaveCategories();
+            RenderCategories();
+        }
+
+        private void RenderCategories()
+        {
+            CategoriesPanel.Children.Clear();
+            for (int i = 0; i < categories.Count; i++)
+            {
+                var group = categories[i];
+                // Category header: [Title] [Divider] [+]
+                var headerGrid = new Grid { Margin = new Thickness(0, 8, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Title
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Divider
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // +
+
+                var headerTextBox = new TextBox
+                {
+                    Text = group.Name,
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 11, // Very small for compactness
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(8, 2, 4, 2),
+                    BorderThickness = new Thickness(0),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(136, 136, 136)),
+                    MinWidth = 60,
+                    MaxWidth = 120,
+                    HorizontalAlignment = HorizontalAlignment.Left
+                };
+                headerTextBox.LostFocus += (s, e) => {
+                    if (headerTextBox.Text.Trim().Length == 0)
+                        headerTextBox.Text = "Category";
+                    group.Name = headerTextBox.Text.Trim();
+                    SaveCategories();
+                };
+                headerTextBox.KeyDown += (s, e) => {
+                    if (e.Key == System.Windows.Input.Key.Enter)
+                    {
+                        if (headerTextBox.Text.Trim().Length == 0)
+                            headerTextBox.Text = "Category";
+                        group.Name = headerTextBox.Text.Trim();
+                        SaveCategories();
+                        // Optionally move focus away to commit
+                        headerTextBox.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next));
+                    }
+                };
+                Grid.SetColumn(headerTextBox, 0);
+                headerGrid.Children.Add(headerTextBox);
+
+                var divider = new Separator
+                {
+                    Margin = new Thickness(0, 0, 0, 0),
+                    Height = 1,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Opacity = 0.5
+                };
+                Grid.SetColumn(divider, 1);
+                headerGrid.Children.Add(divider);
+
+                var addFileBtn = new Button
+                {
+                    Content = "+",
+                    Width = 22,
+                    Height = 22,
+                    Margin = new Thickness(4, 0, 8, 0),
+                    Padding = new Thickness(0),
+                    Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 240, 240)),
+                    BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(208, 208, 208)),
+                    BorderThickness = new System.Windows.Thickness(1),
+                    Foreground = (System.Windows.Media.Brush)this.Resources["AccentColor"],
+                    FontWeight = FontWeights.Bold,
+                    FontSize = 15,
+                    ToolTip = "Add file/app to this category",
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Tag = group,
                     VerticalAlignment = VerticalAlignment.Center
                 };
-                try
+                addFileBtn.Click += AddFileButton_Click;
+                Grid.SetColumn(addFileBtn, 2);
+                headerGrid.Children.Add(addFileBtn);
+                CategoriesPanel.Children.Add(headerGrid);
+
+                // List of files/apps in this category
+                var itemsPanel = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(8, 2, 0, 2) };
+                if (group.Items.Count == 0)
                 {
-                    var icon = GetFileIcon(file);
-                    if (icon != null)
+                    itemsPanel.Children.Add(new TextBlock
                     {
-                        iconImage.Source = Imaging.CreateBitmapSourceFromHIcon(
-                            icon.Handle,
-                            System.Windows.Int32Rect.Empty,
-                            BitmapSizeOptions.FromEmptyOptions());
-                        icon.Dispose();
+                        Text = "(No files/apps)",
+                        FontStyle = FontStyles.Italic,
+                        Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray),
+                        Margin = new System.Windows.Thickness(0, 2, 0, 2)
+                    });
+                }
+                else
+                {
+                    foreach (var file in group.Items)
+                    {
+                        var btn = new Button
+                        {
+                            Style = (Style)this.FindResource("ModernButton"),
+                            Height = 40,
+                            Tag = file,
+                            Margin = new Thickness(0, 2, 0, 2)
+                        };
+                        var grid = new Grid();
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
+                        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                        // File icon
+                        var iconImage = new System.Windows.Controls.Image
+                        {
+                            Width = 24,
+                            Height = 24,
+                            Margin = new Thickness(0, 0, 8, 0),
+                            VerticalAlignment = VerticalAlignment.Center
+                        };
+                        try
+                        {
+                            var icon = GetFileIcon(file);
+                            if (icon != null)
+                            {
+                                iconImage.Source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                                    icon.Handle,
+                                    System.Windows.Int32Rect.Empty,
+                                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                                icon.Dispose();
+                            }
+                        }
+                        catch { }
+                        Grid.SetColumn(iconImage, 0);
+                        grid.Children.Add(iconImage);
+                        // File name
+                        var textBlock = new TextBlock
+                        {
+                            Text = System.IO.Path.GetFileName(file),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                            FontWeight = FontWeights.Normal
+                        };
+                        Grid.SetColumn(textBlock, 1);
+                        grid.Children.Add(textBlock);
+                        btn.Content = grid;
+                        btn.Click += (s, e) => OpenFile(file);
+                        itemsPanel.Children.Add(btn);
                     }
                 }
-                catch
-                {
-                    // fallback: no icon
-                }
-                Grid.SetColumn(iconImage, 0);
-                grid.Children.Add(iconImage);
-                // File name
-                var textBlock = new TextBlock
-                {
-                    Text = System.IO.Path.GetFileName(file),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    FontWeight = FontWeights.Normal
-                };
-                Grid.SetColumn(textBlock, 1);
-                grid.Children.Add(textBlock);
-                button.Content = grid;
-                button.Click += (s, e) => OpenFile(file);
-                FileListPanel.Children.Add(button);
+                CategoriesPanel.Children.Add(itemsPanel);
             }
-            if (addedFiles.Count == 0)
+
+            // Add the 'Add category' button at the end
+            var addCategoryBtn = new Button
             {
-                var noFilesText = new TextBlock
-                {
-                    Text = "Drag files here or use + to add",
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    FontStyle = FontStyles.Italic,
-                    Foreground = new SolidColorBrush(Colors.Gray),
-                    Margin = new Thickness(0, 10, 0, 10)
-                };
-                FileListPanel.Children.Add(noFilesText);
-            }
+                Content = "Add category",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 12, 0, 0),
+                Padding = new Thickness(16, 6, 16, 6),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 240, 240)),
+                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(208, 208, 208)),
+                BorderThickness = new System.Windows.Thickness(1),
+                Foreground = (System.Windows.Media.Brush)this.Resources["AccentColor"],
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            addCategoryBtn.Click += AddCategoryButton_Click;
+            CategoriesPanel.Children.Add(addCategoryBtn);
         }
+
 
         private void OpenFile(string filePath)
         {
@@ -197,7 +376,7 @@ namespace TaskbarGrouper.Views
         }
 
         // Get the icon for a file (returns System.Drawing.Icon)
-        private static Icon? GetFileIcon(string filePath)
+    private static System.Drawing.Icon? GetFileIcon(string filePath)
         {
             try
             {
@@ -215,7 +394,6 @@ namespace TaskbarGrouper.Views
             var windows = WindowEnumerator.GetOpenWindows();
             foreach (var win in windows)
             {
-
                 var rowGrid = new Grid
                 {
                     Background = System.Windows.Media.Brushes.Transparent // Allow button hover background to show
@@ -246,7 +424,7 @@ namespace TaskbarGrouper.Views
                     else
                     {
                         iconImage.Source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-                            SystemIcons.Application.Handle,
+                            System.Drawing.SystemIcons.Application.Handle,
                             System.Windows.Int32Rect.Empty,
                             System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
                     }
@@ -254,7 +432,7 @@ namespace TaskbarGrouper.Views
                 catch
                 {
                     iconImage.Source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-                        SystemIcons.Application.Handle,
+                        System.Drawing.SystemIcons.Application.Handle,
                         System.Windows.Int32Rect.Empty,
                         System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
                 }
@@ -283,7 +461,7 @@ namespace TaskbarGrouper.Views
                     ToolTip = "Force close program",
                     Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 240, 240)),
                     BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200)),
-                    BorderThickness = new Thickness(1),
+                    BorderThickness = new System.Windows.Thickness(1),
                     Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 0, 0)),
                     FontWeight = FontWeights.Bold,
                     FontSize = 14,
@@ -304,8 +482,8 @@ namespace TaskbarGrouper.Views
                     Content = rowGrid,
                     Tag = win.Hwnd,
                     Background = System.Windows.Media.Brushes.Transparent,
-                    BorderThickness = new Thickness(0),
-                    Padding = new Thickness(0),
+                    BorderThickness = new System.Windows.Thickness(0),
+                    Padding = new System.Windows.Thickness(0),
                     HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     VerticalContentAlignment = VerticalAlignment.Stretch
                 };
@@ -321,8 +499,8 @@ namespace TaskbarGrouper.Views
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     FontStyle = FontStyles.Italic,
-                    Foreground = new SolidColorBrush(Colors.Gray),
-                    Margin = new Thickness(0, 20, 0, 20)
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray),
+                    Margin = new System.Windows.Thickness(0, 20, 0, 20)
                 };
                 AppListPanel.Children.Add(noWindowsText);
             }
@@ -338,7 +516,7 @@ namespace TaskbarGrouper.Views
                 if (pid != 0)
                 {
                     var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                    proc.Kill(true);
+                    proc.Kill();
                 }
             }
             catch (Exception ex)
@@ -346,6 +524,7 @@ namespace TaskbarGrouper.Views
                 MessageBox.Show($"Failed to force close program:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -388,7 +567,7 @@ namespace TaskbarGrouper.Views
             SetForegroundWindow(hwnd);
         }
 
-        public static Icon? GetWindowIcon(IntPtr hwnd)
+    public static System.Drawing.Icon? GetWindowIcon(IntPtr hwnd)
         {
             try
             {
@@ -398,13 +577,11 @@ namespace TaskbarGrouper.Views
                 if (hIcon == IntPtr.Zero)
                     hIcon = SendMessage(hwnd, WM_GETICON, ICON_SMALL2, 0);
                 if (hIcon == IntPtr.Zero)
-                    hIcon = GetClassLongPtr(hwnd, GCL_HICON);
-                if (hIcon == IntPtr.Zero)
                     hIcon = GetClassLongPtr(hwnd, GCL_HICONSM);
 
                 if (hIcon != IntPtr.Zero)
                 {
-                    return Icon.FromHandle(hIcon);
+            return System.Drawing.Icon.FromHandle(hIcon);
                 }
             }
             catch
