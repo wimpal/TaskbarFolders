@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Runtime.InteropServices;
 
@@ -13,7 +12,6 @@ namespace TaskbarGrouper.Views
 
         public MainWindow()
         {
-            InitializeComponent();
             this.WindowState = WindowState.Minimized;
             this.ShowInTaskbar = true;
             this.Activated += MainWindow_Activated;
@@ -108,6 +106,8 @@ namespace TaskbarGrouper.Views
                 if (screen.Bounds.Contains(x, y))
                     return screen;
             }
+            if (System.Windows.Forms.Screen.PrimaryScreen == null)
+                throw new InvalidOperationException("No primary screen detected.");
             return System.Windows.Forms.Screen.PrimaryScreen;
         }
 
